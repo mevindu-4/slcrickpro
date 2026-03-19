@@ -1,0 +1,277 @@
+const express = require('express');
+const cors = require('cors');
+const mongoose = require('mongoose');
+require('dotenv').config();
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+app.use(express.text({ type: 'text/plain' }));
+
+// ─── Schemas ──────────────────────────────────────────────────────────────────
+
+const playerSchema = new mongoose.Schema({
+    _id:        { type: String },   // playerId e.g. CP0001
+    name:       { type: String },
+    dob:        { type: String },
+    phone:      { type: String },
+    address:    { type: String },
+    team:       { type: String },
+    role:       { type: String },
+    batStyle:   { type: String },
+    bowlStyle:  { type: String },
+    jersey:     { type: mongoose.Schema.Types.Mixed },
+    createdAt:  { type: Number },
+    stats: {
+        matches:      { type: Number, default: 0 },
+        innings:      { type: Number, default: 0 },
+        runs:         { type: Number, default: 0 },
+        balls:        { type: Number, default: 0 },
+        fours:        { type: Number, default: 0 },
+        sixes:        { type: Number, default: 0 },
+        notOuts:      { type: Number, default: 0 },
+        highScore:    { type: Number, default: 0 },
+        thirties:     { type: Number, default: 0 },
+        fifties:      { type: Number, default: 0 },
+        hundreds:     { type: Number, default: 0 },
+        wickets:      { type: Number, default: 0 },
+        overs:        { type: Number, default: 0 },
+        bowlingRuns:  { type: Number, default: 0 },
+        maidens:      { type: Number, default: 0 },
+        bestBowling:  { type: String, default: '0/0' },
+        catches:      { type: Number, default: 0 },
+        stumpings:    { type: Number, default: 0 },
+    },
+}, { _id: false, timestamps: true });
+
+const teamSchema = new mongoose.Schema({
+    _id:       { type: String },  // TEAM-<timestamp>
+    name:      { type: String },
+    ground:    { type: String },
+    captain:   { type: String },
+    manager:   { type: String },
+    contact:   { type: String },
+    year:      { type: String },
+    createdAt: { type: Number },
+    stats: {
+        played:   { type: Number, default: 0 },
+        won:      { type: Number, default: 0 },
+        lost:     { type: Number, default: 0 },
+        tied:     { type: Number, default: 0 },
+        prizeMoney: { type: Number, default: 0 },
+        runsFor:     { type: Number, default: 0 },
+        runsAgainst: { type: Number, default: 0 },
+    },
+}, { _id: false, timestamps: true });
+
+const Player = mongoose.model('Player', playerSchema);
+const Team   = mongoose.model('Team',   teamSchema);
+
+// ─── Connect to MongoDB ───────────────────────────────────────────────────────
+
+const connectDB = async () => {
+    if (!process.env.MONGO_URI) {
+        console.warn('\x1b[33m%s\x1b[0m', 'WARNING: MONGO_URI is not set.');
+        return;
+    }
+    try {
+        await mongoose.connect(process.env.MONGO_URI, { dbName: 'crickdb' });
+        console.log('✅ Connected to MongoDB (Atlas: crickdb)');
+    } catch (err) {
+        console.error('❌ MongoDB connection failed:', err);
+    }
+};
+connectDB();
+
+// ─── Helper ───────────────────────────────────────────────────────────────────
+
+function parseBody(req) {
+    let payload = req.body;
+    if (typeof payload === 'string') {
+        try { payload = JSON.parse(payload); } catch (e) { return null; }
+    }
+    return payload;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PLAYERS
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Register / upsert a player
+app.post('/players', async (req, res) => {
+    const data = parseBody(req);
+    if (!data || !data.playerId) return res.status(400).json({ error: 'Missing playerId' });
+    try {
+        const doc = await Player.findByIdAndUpdate(
+            data.playerId,
+            { _id: data.playerId, ...data },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+        res.json({ ok: true, player: doc });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: 'Failed to save player' });
+    }
+});
+
+// Get all players
+app.get('/players', async (req, res) => {
+    try {
+        const players = await Player.find().lean();
+        res.json(players);
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to fetch players' });
+    }
+});
+
+// Get single player
+app.get('/players/:id', async (req, res) => {
+    try {
+        const player = await Player.findById(req.params.id).lean();
+        if (!player) return res.status(404).json({ error: 'Not found' });
+        res.json(player);
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to fetch player' });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PLAYER STATS — called after every official tournament
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Update stats for ONE player
+app.post('/stats/update', async (req, res) => {
+    const data = parseBody(req);
+    if (!data || !data.playerId || !data.stats) return res.status(400).json({ error: 'Missing playerId or stats' });
+    try {
+        const doc = await Player.findByIdAndUpdate(
+            data.playerId,
+            { $set: { stats: data.stats } },
+            { new: true, upsert: false }
+        );
+        if (!doc) return res.status(404).json({ error: 'Player not found in DB. Register first.' });
+        res.json({ ok: true });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: 'Failed to update stats' });
+    }
+});
+
+// Bulk-update stats for multiple players at once (called after tournament ends)
+app.post('/stats/bulk-update', async (req, res) => {
+    const data = parseBody(req);
+    if (!data || !Array.isArray(data.players)) return res.status(400).json({ error: 'Expected { players: [...] }' });
+    try {
+        const ops = data.players.map(p => ({
+            updateOne: {
+                filter: { _id: p.playerId },
+                update: { $set: { stats: p.stats } },
+                upsert: false,
+            }
+        }));
+        const result = await Player.bulkWrite(ops);
+        res.json({ ok: true, matched: result.matchedCount, modified: result.modifiedCount });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: 'Bulk stats update failed' });
+    }
+});
+
+// Get all players with stats (for ranking page)
+app.get('/stats/players', async (req, res) => {
+    try {
+        const players = await Player.find({}, 'name playerId team role stats').lean();
+        res.json(players);
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to fetch stats' });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  TEAMS
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Register / upsert a team
+app.post('/teams', async (req, res) => {
+    const data = parseBody(req);
+    if (!data || !data.id) return res.status(400).json({ error: 'Missing team id' });
+    try {
+        const doc = await Team.findByIdAndUpdate(
+            data.id,
+            { _id: data.id, ...data },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+        res.json({ ok: true, team: doc });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: 'Failed to save team' });
+    }
+});
+
+// Get all teams
+app.get('/teams', async (req, res) => {
+    try {
+        const teams = await Team.find().lean();
+        res.json(teams);
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to fetch teams' });
+    }
+});
+
+// Update team stats (called after official tournament)
+app.post('/team-stats/update', async (req, res) => {
+    const data = parseBody(req);
+    if (!data || !data.id || !data.stats) return res.status(400).json({ error: 'Missing id or stats' });
+    try {
+        await Team.findByIdAndUpdate(
+            data.id,
+            { $set: { stats: data.stats } },
+            { upsert: false }
+        );
+        res.json({ ok: true });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to update team stats' });
+    }
+});
+
+// Get teams with stats (for ranking page)
+app.get('/team-stats', async (req, res) => {
+    try {
+        const teams = await Team.find({}, 'name id stats').lean();
+        res.json(teams);
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to fetch team stats' });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  LEGACY /sync endpoint (kept for backward compatibility)
+// ═══════════════════════════════════════════════════════════════════════════
+app.post('/sync', async (req, res) => {
+    const payload = parseBody(req);
+    if (!payload) return res.status(400).json({ error: 'Invalid JSON' });
+    const { type, data } = payload;
+    if (type === 'player' && data?.playerId) {
+        req.body = data;
+        return app._router.handle({ ...req, url: '/players', method: 'POST', body: data }, res, () => {});
+    }
+    res.json({ ok: true, message: 'legacy sync acknowledged' });
+});
+
+// ─── Health ───────────────────────────────────────────────────────────────────
+app.get('/health', (req, res) => {
+    const states = { 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' };
+    res.json({ 
+        status: states[mongoose.connection.readyState] || 'unknown',
+        dbName: mongoose.connection.name || 'none',
+        env: process.env.NODE_ENV
+    });
+});
+
+// ─── Start ──────────────// ── Start ────────────────────────────────────────────────────
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+    const PORT = process.env.PORT || 3000;
+    app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+}
+
+module.exports = app;
