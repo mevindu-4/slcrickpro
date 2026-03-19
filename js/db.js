@@ -39,6 +39,10 @@ const DB = {
     savePlayers(arr) {
         this._secureSet(DB_KEYS.PLAYERS, arr);
     },
+    _syncAllPlayers(arr) {
+        // Bulk push all players to MongoDB
+        arr.forEach(p => syncToDB('player', p));
+    },
     addPlayer(player) {
         const arr = this.getPlayers();
         const id = this.generatePlayerId(arr);
@@ -86,6 +90,10 @@ const DB = {
     },
     saveTeams(arr) {
         this._secureSet(DB_KEYS.TEAMS, arr);
+    },
+    _syncAllTeams(arr) {
+        // Bulk push all teams to MongoDB
+        arr.forEach(t => syncToDB('team', t));
     },
     addTeam(team) {
         const arr = this.getTeams();
@@ -532,12 +540,31 @@ if ('serviceWorker' in navigator) {
 }
 
 // ============================================================
-// LIVE MATCH POLLING SYNC
+// FULL DATA POLLING SYNC (Players, Teams, Matches, Tournaments)
 // ============================================================
 function pullLiveUpdates() {
     if (!BACKEND_BASE_URL) return;
     const isScorer = window.location.pathname.includes('score-match.html') || window.location.pathname.includes('admin.html');
-    
+
+    // ── Players ──────────────────────────────────────────────
+    fetch(BACKEND_BASE_URL + '/players')
+        .then(r => r.json())
+        .then(data => {
+            if (data && Array.isArray(data) && data.length > 0) {
+                DB.savePlayers(data);
+            }
+        }).catch(() => {});
+
+    // ── Teams ────────────────────────────────────────────────
+    fetch(BACKEND_BASE_URL + '/teams')
+        .then(r => r.json())
+        .then(data => {
+            if (data && Array.isArray(data) && data.length > 0) {
+                DB.saveTeams(data);
+            }
+        }).catch(() => {});
+
+    // ── Matches ──────────────────────────────────────────────
     fetch(BACKEND_BASE_URL + '/sync/matches')
         .then(r => r.json())
         .then(data => {
@@ -545,8 +572,9 @@ function pullLiveUpdates() {
                 if (!isScorer) DB.saveMatches(data);
                 if (isScorer && !window.hasFetchedCloudOnce) DB.saveMatches(data);
             }
-        }).catch(()=>{});
+        }).catch(() => {});
 
+    // ── Tournaments ──────────────────────────────────────────
     fetch(BACKEND_BASE_URL + '/sync/tournaments')
         .then(r => r.json())
         .then(data => {
@@ -554,14 +582,12 @@ function pullLiveUpdates() {
                 if (!isScorer) DB.saveTournaments(data);
                 if (isScorer && !window.hasFetchedCloudOnce) DB.saveTournaments(data);
             }
-        }).catch(()=>{});
+        }).catch(() => {});
 
     if (isScorer) window.hasFetchedCloudOnce = true;
 }
 
-// Viewers securely poll for new arrays every 3s
-if (!window.location.pathname.includes('score-match.html') && !window.location.pathname.includes('admin.html')) {
-    setInterval(pullLiveUpdates, 3000);
-}
+// All pages poll every 5s to stay in sync
+setInterval(pullLiveUpdates, 5000);
 // Everyone grabs an initial clone on page boot
 setTimeout(pullLiveUpdates, 500);
