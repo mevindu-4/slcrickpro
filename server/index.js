@@ -80,21 +80,26 @@ const tournamentSchema = new mongoose.Schema({
 const Match      = mongoose.model('Match', matchSchema);
 const Tournament = mongoose.model('Tournament', tournamentSchema);
 
-// ─── Connect to MongoDB ───────────────────────────────────────────────────────
+// ─── Connect to MongoDB (serverless-safe cached connection) ──────────────────
 
-const connectDB = async () => {
+let _dbConnected = false;
+
+const ensureDB = async () => {
+    if (_dbConnected && mongoose.connection.readyState === 1) return;
     if (!process.env.MONGO_URI) {
-        console.warn('\x1b[33m%s\x1b[0m', 'WARNING: MONGO_URI is not set.');
-        return;
+        throw new Error('MONGO_URI environment variable is not set in Vercel.');
     }
-    try {
-        await mongoose.connect(process.env.MONGO_URI, { dbName: 'crickdb' });
-        console.log('✅ Connected to MongoDB (Atlas: crickdb)');
-    } catch (err) {
-        console.error('❌ MongoDB connection failed:', err);
-    }
+    await mongoose.connect(process.env.MONGO_URI, {
+        dbName: 'crickdb',
+        serverSelectionTimeoutMS: 5000,
+        socketTimeoutMS: 10000,
+    });
+    _dbConnected = true;
+    console.log('✅ Connected to MongoDB (crickdb)');
 };
-connectDB();
+
+// Kick off connection at module load (warm start optimization)
+ensureDB().catch(err => console.error('❌ Initial DB connect failed:', err));
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
@@ -115,6 +120,7 @@ app.post('/players', async (req, res) => {
     const data = parseBody(req);
     if (!data || !data.playerId) return res.status(400).json({ error: 'Missing playerId' });
     try {
+        await ensureDB();
         const doc = await Player.findByIdAndUpdate(
             data.playerId,
             { _id: data.playerId, ...data },
@@ -123,28 +129,30 @@ app.post('/players', async (req, res) => {
         res.json({ ok: true, player: doc });
     } catch (e) {
         console.error(e);
-        res.status(500).json({ error: 'Failed to save player' });
+        res.status(500).json({ error: e.message || 'Failed to save player' });
     }
 });
 
 // Get all players
 app.get('/players', async (req, res) => {
     try {
+        await ensureDB();
         const players = await Player.find().lean();
         res.json(players);
     } catch (e) {
-        res.status(500).json({ error: 'Failed to fetch players' });
+        res.status(500).json({ error: e.message || 'Failed to fetch players' });
     }
 });
 
 // Get single player
 app.get('/players/:id', async (req, res) => {
     try {
+        await ensureDB();
         const player = await Player.findById(req.params.id).lean();
         if (!player) return res.status(404).json({ error: 'Not found' });
         res.json(player);
     } catch (e) {
-        res.status(500).json({ error: 'Failed to fetch player' });
+        res.status(500).json({ error: e.message || 'Failed to fetch player' });
     }
 });
 
@@ -157,6 +165,7 @@ app.post('/stats/update', async (req, res) => {
     const data = parseBody(req);
     if (!data || !data.playerId || !data.stats) return res.status(400).json({ error: 'Missing playerId or stats' });
     try {
+        await ensureDB();
         const doc = await Player.findByIdAndUpdate(
             data.playerId,
             { $set: { stats: data.stats } },
@@ -166,7 +175,7 @@ app.post('/stats/update', async (req, res) => {
         res.json({ ok: true });
     } catch (e) {
         console.error(e);
-        res.status(500).json({ error: 'Failed to update stats' });
+        res.status(500).json({ error: e.message || 'Failed to update stats' });
     }
 });
 
@@ -175,6 +184,7 @@ app.post('/stats/bulk-update', async (req, res) => {
     const data = parseBody(req);
     if (!data || !Array.isArray(data.players)) return res.status(400).json({ error: 'Expected { players: [...] }' });
     try {
+        await ensureDB();
         const ops = data.players.map(p => ({
             updateOne: {
                 filter: { _id: p.playerId },
@@ -186,17 +196,18 @@ app.post('/stats/bulk-update', async (req, res) => {
         res.json({ ok: true, matched: result.matchedCount, modified: result.modifiedCount });
     } catch (e) {
         console.error(e);
-        res.status(500).json({ error: 'Bulk stats update failed' });
+        res.status(500).json({ error: e.message || 'Bulk stats update failed' });
     }
 });
 
 // Get all players with stats (for ranking page)
 app.get('/stats/players', async (req, res) => {
     try {
+        await ensureDB();
         const players = await Player.find({}, 'name playerId team role stats').lean();
         res.json(players);
     } catch (e) {
-        res.status(500).json({ error: 'Failed to fetch stats' });
+        res.status(500).json({ error: e.message || 'Failed to fetch stats' });
     }
 });
 
@@ -209,6 +220,7 @@ app.post('/teams', async (req, res) => {
     const data = parseBody(req);
     if (!data || !data.id) return res.status(400).json({ error: 'Missing team id' });
     try {
+        await ensureDB();
         const doc = await Team.findByIdAndUpdate(
             data.id,
             { _id: data.id, ...data },
@@ -217,17 +229,18 @@ app.post('/teams', async (req, res) => {
         res.json({ ok: true, team: doc });
     } catch (e) {
         console.error(e);
-        res.status(500).json({ error: 'Failed to save team' });
+        res.status(500).json({ error: e.message || 'Failed to save team' });
     }
 });
 
 // Get all teams
 app.get('/teams', async (req, res) => {
     try {
+        await ensureDB();
         const teams = await Team.find().lean();
         res.json(teams);
     } catch (e) {
-        res.status(500).json({ error: 'Failed to fetch teams' });
+        res.status(500).json({ error: e.message || 'Failed to fetch teams' });
     }
 });
 
@@ -236,6 +249,7 @@ app.post('/team-stats/update', async (req, res) => {
     const data = parseBody(req);
     if (!data || !data.id || !data.stats) return res.status(400).json({ error: 'Missing id or stats' });
     try {
+        await ensureDB();
         await Team.findByIdAndUpdate(
             data.id,
             { $set: { stats: data.stats } },
@@ -243,17 +257,18 @@ app.post('/team-stats/update', async (req, res) => {
         );
         res.json({ ok: true });
     } catch (e) {
-        res.status(500).json({ error: 'Failed to update team stats' });
+        res.status(500).json({ error: e.message || 'Failed to update team stats' });
     }
 });
 
 // Get teams with stats (for ranking page)
 app.get('/team-stats', async (req, res) => {
     try {
+        await ensureDB();
         const teams = await Team.find({}, 'name id stats').lean();
         res.json(teams);
     } catch (e) {
-        res.status(500).json({ error: 'Failed to fetch team stats' });
+        res.status(500).json({ error: e.message || 'Failed to fetch team stats' });
     }
 });
 
@@ -265,20 +280,22 @@ app.post('/sync/match', async (req, res) => {
     const data = parseBody(req);
     if (!data || !data.id) return res.status(400).json({ error: 'Missing match id' });
     try {
+        await ensureDB();
         await Match.findByIdAndUpdate(data.id, { _id: data.id, data }, { upsert: true });
         res.json({ ok: true });
     } catch (e) {
         console.error(e);
-        res.status(500).json({ error: 'Failed to sync match' });
+        res.status(500).json({ error: e.message || 'Failed to sync match' });
     }
 });
 
 app.get('/sync/matches', async (req, res) => {
     try {
+        await ensureDB();
         const matches = await Match.find().lean();
         res.json(matches.map(m => m.data));
     } catch (e) {
-        res.status(500).json({ error: 'Failed to fetch matches' });
+        res.status(500).json({ error: e.message || 'Failed to fetch matches' });
     }
 });
 
@@ -286,20 +303,22 @@ app.post('/sync/tournament', async (req, res) => {
     const data = parseBody(req);
     if (!data || !data.id) return res.status(400).json({ error: 'Missing tournament id' });
     try {
+        await ensureDB();
         await Tournament.findByIdAndUpdate(data.id, { _id: data.id, data }, { upsert: true });
         res.json({ ok: true });
     } catch (e) {
         console.error(e);
-        res.status(500).json({ error: 'Failed to sync tournament' });
+        res.status(500).json({ error: e.message || 'Failed to sync tournament' });
     }
 });
 
 app.get('/sync/tournaments', async (req, res) => {
     try {
+        await ensureDB();
         const tournaments = await Tournament.find().lean();
         res.json(tournaments.map(t => t.data));
     } catch (e) {
-        res.status(500).json({ error: 'Failed to fetch tournaments' });
+        res.status(500).json({ error: e.message || 'Failed to fetch tournaments' });
     }
 });
 
