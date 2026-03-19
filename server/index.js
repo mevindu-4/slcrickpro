@@ -345,13 +345,24 @@ app.post('/sync', async (req, res) => {
 });
 
 // ─── Health ───────────────────────────────────────────────────────────────────
-app.get('/health', (req, res) => {
+app.get('/health', async (req, res) => {
     const states = { 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' };
-    res.json({ 
-        status: states[mongoose.connection.readyState] || 'unknown',
-        dbName: mongoose.connection.name || 'none',
-        env: process.env.NODE_ENV
-    });
+    try {
+        await ensureDB();
+        res.json({
+            status: states[mongoose.connection.readyState] || 'unknown',
+            dbName: mongoose.connection.name || 'none',
+            env: process.env.NODE_ENV,
+            ok: true
+        });
+    } catch (e) {
+        res.status(500).json({
+            status: states[mongoose.connection.readyState] || 'unknown',
+            error: e.message,
+            env: process.env.NODE_ENV,
+            ok: false
+        });
+    }
 });
 
 // ─── Start ──────────────// ── Start ────────────────────────────────────────────────────
