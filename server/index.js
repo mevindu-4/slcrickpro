@@ -67,6 +67,19 @@ const teamSchema = new mongoose.Schema({
 const Player = mongoose.model('Player', playerSchema);
 const Team   = mongoose.model('Team',   teamSchema);
 
+const matchSchema = new mongoose.Schema({
+    _id:  { type: String }, // MATCH-<timestamp>
+    data: { type: mongoose.Schema.Types.Mixed }
+}, { _id: false, timestamps: true });
+
+const tournamentSchema = new mongoose.Schema({
+    _id:  { type: String }, // TOURN-<timestamp>
+    data: { type: mongoose.Schema.Types.Mixed }
+}, { _id: false, timestamps: true });
+
+const Match      = mongoose.model('Match', matchSchema);
+const Tournament = mongoose.model('Tournament', tournamentSchema);
+
 // ─── Connect to MongoDB ───────────────────────────────────────────────────────
 
 const connectDB = async () => {
@@ -241,6 +254,52 @@ app.get('/team-stats', async (req, res) => {
         res.json(teams);
     } catch (e) {
         res.status(500).json({ error: 'Failed to fetch team stats' });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  MATCHES & TOURNAMENTS (LIVE SYNC)
+// ═══════════════════════════════════════════════════════════════════════════
+
+app.post('/sync/match', async (req, res) => {
+    const data = parseBody(req);
+    if (!data || !data.id) return res.status(400).json({ error: 'Missing match id' });
+    try {
+        await Match.findByIdAndUpdate(data.id, { _id: data.id, data }, { upsert: true });
+        res.json({ ok: true });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: 'Failed to sync match' });
+    }
+});
+
+app.get('/sync/matches', async (req, res) => {
+    try {
+        const matches = await Match.find().lean();
+        res.json(matches.map(m => m.data));
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to fetch matches' });
+    }
+});
+
+app.post('/sync/tournament', async (req, res) => {
+    const data = parseBody(req);
+    if (!data || !data.id) return res.status(400).json({ error: 'Missing tournament id' });
+    try {
+        await Tournament.findByIdAndUpdate(data.id, { _id: data.id, data }, { upsert: true });
+        res.json({ ok: true });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: 'Failed to sync tournament' });
+    }
+});
+
+app.get('/sync/tournaments', async (req, res) => {
+    try {
+        const tournaments = await Tournament.find().lean();
+        res.json(tournaments.map(t => t.data));
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to fetch tournaments' });
     }
 });
 

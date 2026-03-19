@@ -113,6 +113,7 @@ const DB = {
         const idx = arr.findIndex(m => m.id === match.id);
         if (idx !== -1) arr[idx] = match; else arr.push(match);
         this.saveMatches(arr);
+        syncToDB('match', match);
     },
     deleteMatch(id) {
         let arr = this.getMatches();
@@ -213,6 +214,7 @@ const DB = {
         const idx = arr.findIndex(x => x.id === t.id);
         if (idx !== -1) arr[idx] = t; else arr.push(t);
         this.saveTournaments(arr);
+        syncToDB('tournament', t);
     },
     createTournament(cfg) {
         const t = {
@@ -333,7 +335,12 @@ const BACKEND_BASE_URL = localStorage.getItem('cricpro_backend_url') ||
  */
 function syncToDB(type, data) {
     if (!BACKEND_BASE_URL) return;
-    const endpoint = type === 'player' ? '/players' : '/teams';
+    let endpoint = '';
+    if (type === 'player') endpoint = '/players';
+    else if (type === 'team') endpoint = '/teams';
+    else if (type === 'match') endpoint = '/sync/match';
+    else if (type === 'tournament') endpoint = '/sync/tournament';
+
     console.log(`📡 Syncing ${type} to: ${BACKEND_BASE_URL + endpoint}`);
     fetch(BACKEND_BASE_URL + endpoint, {
         method: 'POST',
@@ -523,3 +530,38 @@ if ('serviceWorker' in navigator) {
         });
     });
 }
+
+// ============================================================
+// LIVE MATCH POLLING SYNC
+// ============================================================
+function pullLiveUpdates() {
+    if (!BACKEND_BASE_URL) return;
+    const isScorer = window.location.pathname.includes('score-match.html') || window.location.pathname.includes('admin.html');
+    
+    fetch(BACKEND_BASE_URL + '/sync/matches')
+        .then(r => r.json())
+        .then(data => {
+            if (data && Array.isArray(data) && data.length > 0) {
+                if (!isScorer) DB.saveMatches(data);
+                if (isScorer && !window.hasFetchedCloudOnce) DB.saveMatches(data);
+            }
+        }).catch(()=>{});
+
+    fetch(BACKEND_BASE_URL + '/sync/tournaments')
+        .then(r => r.json())
+        .then(data => {
+            if (data && Array.isArray(data) && data.length > 0) {
+                if (!isScorer) DB.saveTournaments(data);
+                if (isScorer && !window.hasFetchedCloudOnce) DB.saveTournaments(data);
+            }
+        }).catch(()=>{});
+
+    if (isScorer) window.hasFetchedCloudOnce = true;
+}
+
+// Viewers securely poll for new arrays every 3s
+if (!window.location.pathname.includes('score-match.html') && !window.location.pathname.includes('admin.html')) {
+    setInterval(pullLiveUpdates, 3000);
+}
+// Everyone grabs an initial clone on page boot
+setTimeout(pullLiveUpdates, 500);
