@@ -80,26 +80,34 @@ const tournamentSchema = new mongoose.Schema({
 const Match      = mongoose.model('Match', matchSchema);
 const Tournament = mongoose.model('Tournament', tournamentSchema);
 
-// ─── Connect to MongoDB (serverless-safe cached connection) ──────────────────
+// ─── Connect to MongoDB (serverless-safe, promise-cached) ────────────────────
 
-let _dbConnected = false;
+let _connectPromise = null;
 
-const ensureDB = async () => {
-    if (_dbConnected && mongoose.connection.readyState === 1) return;
+const ensureDB = () => {
+    if (mongoose.connection.readyState === 1) return Promise.resolve(); // already connected
     if (!process.env.MONGO_URI) {
-        throw new Error('MONGO_URI environment variable is not set in Vercel.');
+        return Promise.reject(new Error('MONGO_URI is not set in environment variables.'));
     }
-    await mongoose.connect(process.env.MONGO_URI, {
-        dbName: 'crickdb',
-        serverSelectionTimeoutMS: 5000,
-        socketTimeoutMS: 10000,
-    });
-    _dbConnected = true;
-    console.log('✅ Connected to MongoDB (crickdb)');
+    // Cache the connection promise so concurrent cold-start requests share one attempt
+    if (!_connectPromise) {
+        _connectPromise = mongoose.connect(process.env.MONGO_URI, {
+            dbName: 'crickdb',
+            serverSelectionTimeoutMS: 8000,
+        }).then(() => {
+            console.log('✅ Connected to MongoDB (crickdb)');
+        }).catch(err => {
+            _connectPromise = null; // allow retry on next request
+            console.error('❌ MongoDB connect failed:', err.message);
+            throw err;
+        });
+    }
+    return _connectPromise;
 };
 
-// Kick off connection at module load (warm start optimization)
-ensureDB().catch(err => console.error('❌ Initial DB connect failed:', err));
+// Warm-start: kick off connection when module first loads
+ensureDB().catch(() => {});
+
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
