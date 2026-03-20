@@ -597,7 +597,8 @@ function pullLiveUpdates() {
         .then(r => r.json())
         .then(data => {
             if (data && Array.isArray(data) && data.length > 0) {
-                DB.savePlayers(data);
+                const mapped = data.map(p => ({ ...p, playerId: p.playerId || p._id }));
+                DB.savePlayers(mapped);
             }
         }).catch(() => {});
 
@@ -635,7 +636,8 @@ function pullLiveUpdates() {
         .then(r => r.json())
         .then(data => {
             if (data && Array.isArray(data) && data.length > 0) {
-                DB._secureSet(DB_KEYS.PRODUCTS, data);
+                const mapped = data.map(p => ({ ...p, id: p.id || p._id }));
+                DB.saveProducts(mapped);
                 // If the store page is open, re-render
                 if (typeof renderProducts === 'function') renderProducts();
             }

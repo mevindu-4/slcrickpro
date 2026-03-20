@@ -164,7 +164,7 @@ app.get('/players', async (req, res) => {
     try {
         await ensureDB();
         const players = await Player.find().lean();
-        res.json(players);
+        res.json(players.map(p => ({ ...p, playerId: p._id })));
     } catch (e) {
         res.status(500).json({ error: e.message || 'Failed to fetch players' });
     }
@@ -176,7 +176,7 @@ app.get('/players/:id', async (req, res) => {
         await ensureDB();
         const player = await Player.findById(req.params.id).lean();
         if (!player) return res.status(404).json({ error: 'Not found' });
-        res.json(player);
+        res.json({ ...player, playerId: player._id });
     } catch (e) {
         res.status(500).json({ error: e.message || 'Failed to fetch player' });
     }
