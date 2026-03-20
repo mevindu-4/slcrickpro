@@ -292,6 +292,13 @@ const DB = {
     },
     saveProducts(arr) {
         this._secureSet(DB_KEYS.PRODUCTS, arr);
+        // Sync every product to MongoDB so all devices see updates
+        arr.forEach(p => syncProductToDB(p));
+    },
+    deleteProductFromCloud(id) {
+        if (!BACKEND_BASE_URL) return;
+        fetch(BACKEND_BASE_URL + '/sync/products/' + id, { method: 'DELETE' })
+            .catch(() => {});
     },
 
     // ---------- ORDERS ----------
@@ -358,6 +365,18 @@ function syncToDB(type, data) {
     .then(r => r.json())
     .then(d => console.log('✅ Sync response:', d))
     .catch(err => console.error('❌ Sync failed:', err));
+}
+
+/**
+ * Sync a single product to MongoDB.
+ */
+function syncProductToDB(product) {
+    if (!BACKEND_BASE_URL || !product || !product.id) return;
+    fetch(BACKEND_BASE_URL + '/sync/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(product),
+    }).catch(() => {});
 }
 
 /**
@@ -581,6 +600,17 @@ function pullLiveUpdates() {
             if (data && Array.isArray(data) && data.length > 0) {
                 if (!isScorer) DB.saveTournaments(data);
                 if (isScorer && !window.hasFetchedCloudOnce) DB.saveTournaments(data);
+            }
+        }).catch(() => {});
+
+    // ── Products ────────────────────────────────────────────────────────
+    fetch(BACKEND_BASE_URL + '/sync/products')
+        .then(r => r.json())
+        .then(data => {
+            if (data && Array.isArray(data) && data.length > 0) {
+                DB._secureSet(DB_KEYS.PRODUCTS, data);
+                // If the store page is open, re-render
+                if (typeof renderProducts === 'function') renderProducts();
             }
         }).catch(() => {});
 

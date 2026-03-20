@@ -80,6 +80,24 @@ const tournamentSchema = new mongoose.Schema({
 const Match      = mongoose.model('Match', matchSchema);
 const Tournament = mongoose.model('Tournament', tournamentSchema);
 
+const productSchema = new mongoose.Schema({
+    _id:         { type: String }, // PROD-<id>
+    name:        { type: String },
+    price:       { type: Number },
+    stock:       { type: Number },
+    category:    { type: String },
+    type:        { type: String },
+    brand:       { type: String },
+    rating:      { type: Number },
+    img:         { type: String },
+    imgFallback: { type: String },
+    desc:        { type: String },
+    details:     { type: String },
+    isService:   { type: Boolean },
+}, { _id: false, timestamps: true });
+
+const Product = mongoose.model('Product', productSchema);
+
 // ─── Connect to MongoDB (serverless-safe, promise-cached) ────────────────────
 
 let _connectPromise = null;
@@ -327,6 +345,47 @@ app.get('/sync/tournaments', async (req, res) => {
         res.json(tournaments.map(t => t.data));
     } catch (e) {
         res.status(500).json({ error: e.message || 'Failed to fetch tournaments' });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PRODUCTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Upsert a single product
+app.post('/sync/products', async (req, res) => {
+    const data = parseBody(req);
+    if (!data || !data.id) return res.status(400).json({ error: 'Missing product id' });
+    try {
+        await ensureDB();
+        await Product.findByIdAndUpdate(data.id, { _id: data.id, ...data }, { upsert: true, new: true });
+        res.json({ ok: true });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: e.message || 'Failed to save product' });
+    }
+});
+
+// Get all products
+app.get('/sync/products', async (req, res) => {
+    try {
+        await ensureDB();
+        const products = await Product.find().lean();
+        // Remap _id -> id for frontend compatibility
+        res.json(products.map(p => ({ ...p, id: p._id })));
+    } catch (e) {
+        res.status(500).json({ error: e.message || 'Failed to fetch products' });
+    }
+});
+
+// Delete a product
+app.delete('/sync/products/:id', async (req, res) => {
+    try {
+        await ensureDB();
+        await Product.findByIdAndDelete(req.params.id);
+        res.json({ ok: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message || 'Failed to delete product' });
     }
 });
 

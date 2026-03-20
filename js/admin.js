@@ -303,6 +303,7 @@ function deleteProduct(pId) {
     const prods = DB.getProducts();
     const updated = prods.filter(p => p.id !== pId);
     DB.saveProducts(updated);
+    DB.deleteProductFromCloud(pId);
     showToast('✅ Product deleted!', 'success');
     renderStoreItems();
 }
