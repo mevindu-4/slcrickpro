@@ -1,5 +1,6 @@
 let cloudPlayerData = null;
 let cloudTeamData = null;
+let currentTab = 'batting';
 
 document.addEventListener('DOMContentLoaded', async () => {
     addStatusBadge();
