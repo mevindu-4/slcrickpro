@@ -182,6 +182,17 @@ app.get('/players/:id', async (req, res) => {
     }
 });
 
+// Delete a player
+app.delete('/players/:id', async (req, res) => {
+    try {
+        await ensureDB();
+        await Player.findByIdAndDelete(req.params.id);
+        res.json({ ok: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message || 'Failed to delete player' });
+    }
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  PLAYER STATS — called after every official tournament
 // ═══════════════════════════════════════════════════════════════════════════

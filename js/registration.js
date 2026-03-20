@@ -153,6 +153,7 @@ function deletePlayer(pid) {
     if (!confirm('Delete this player? This cannot be undone.')) return;
     const all = DB.getPlayers().filter(p => p.playerId !== pid);
     DB.savePlayers(all);
+    DB.deletePlayerFromCloud(pid);
     renderPlayerList();
     showToast('🗑️ Player deleted', 'error');
 }

@@ -323,6 +323,11 @@ const DB = {
             .catch(() => {});
     },
 
+    deletePlayerFromCloud(id) {
+        if (!BACKEND_BASE_URL) return;
+        fetch(BACKEND_BASE_URL + '/players/' + id, { method: 'DELETE' })
+            .catch(() => {});
+    },
     // ---------- ORDERS ----------
     getOrders() {
         return this._secureGet(DB_KEYS.ORDERS, []);
