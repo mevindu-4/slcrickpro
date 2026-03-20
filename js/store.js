@@ -7,9 +7,12 @@ let currentProductId = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   cart = JSON.parse(localStorage.getItem('cricpro_cart') || '{}');
-  // Reset DB to new products
+  // Reset DB to new products (only wipe plain/old-format cache, never secure admin-saved products)
   if (!localStorage.getItem('cricpro_products_v2')) {
-    localStorage.removeItem('cricpro_products');
+    const existingSecure = localStorage.getItem('cricpro_products');
+    if (!existingSecure || !existingSecure.startsWith('SECURE_')) {
+      localStorage.removeItem('cricpro_products');
+    }
     localStorage.setItem('cricpro_products_v2', '1');
   }
   renderProducts();

@@ -94,10 +94,14 @@
     </div>
 
     <div class="toast" id="toast"></div>
-    <!-- Clear old products cache on first load -->
+    <!-- Clear old products cache on first load (only if no admin-saved products exist) -->
     <script>
         if (!localStorage.getItem('cricpro_products_v2')) {
-            localStorage.removeItem('cricpro_products');
+            const existingSecure = localStorage.getItem('cricpro_products');
+            // Only wipe if there are no secure-stored products (admin-added products use SECURE_ prefix)
+            if (!existingSecure || !existingSecure.startsWith('SECURE_')) {
+                localStorage.removeItem('cricpro_products');
+            }
         }
     </script>
     <script src="../js/db.js"></script>

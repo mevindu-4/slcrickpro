@@ -255,6 +255,7 @@ function openAddProduct() {
     document.getElementById('add-prod-emoji').value = '📦';
     document.getElementById('add-prod-img').value = '';
     document.getElementById('add-prod-desc').value = '';
+    document.getElementById('add-prod-category').value = 'bat';
 
     document.getElementById('modal-add-product').style.display = 'flex';
 }
@@ -270,6 +271,9 @@ function saveNewProduct() {
     const imgFallback = document.getElementById('add-prod-emoji').value.trim() || '📦';
     const img = document.getElementById('add-prod-img').value.trim();
     const desc = document.getElementById('add-prod-desc').value.trim();
+    const category = document.getElementById('add-prod-category').value || 'misc';
+
+    const catLabels = { bat: 'Bat', ball: 'Ball', gear: 'Gear', equipment: 'Equipment', bag: 'Bag', shoes: 'Shoes', service: 'Service', misc: 'Misc' };
 
     const newProd = {
         id: 'PROD-' + Date.now().toString(36).toUpperCase(),
@@ -279,10 +283,10 @@ function saveNewProduct() {
         imgFallback,
         img,
         desc,
-        category: 'misc',
-        rating: 0,
-        brand: 'Custom',
-        type: 'Misc'
+        category,
+        rating: 4.0,
+        brand: 'SLCRICKPRO',
+        type: catLabels[category] || 'Misc'
     };
 
     const prods = DB.getProducts();
