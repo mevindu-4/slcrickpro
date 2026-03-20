@@ -38,6 +38,18 @@ const DB = {
     },
     savePlayers(arr) {
         this._secureSet(DB_KEYS.PLAYERS, arr);
+        // Track the highest ID seen to prevent collisions even if cache is temporarily empty
+        if (arr && arr.length > 0) {
+            const ids = arr.map(p => {
+                const m = (p.playerId || '').match(/CP-?(\d+)/);
+                return m ? parseInt(m[1]) || 0 : 0;
+            });
+            const max = Math.max(...ids);
+            const currentLast = parseInt(localStorage.getItem('cricpro_last_pid')) || 0;
+            if (max > currentLast) {
+                localStorage.setItem('cricpro_last_pid', max.toString());
+            }
+        }
     },
     _syncAllPlayers(arr) {
         // Bulk push all players to MongoDB
@@ -57,17 +69,27 @@ const DB = {
         };
         arr.push(player);
         this.savePlayers(arr);
+        // Ensure last ID is tracked immediately
+        const m = (player.playerId || '').match(/CP-?(\d+)/);
+        if (m) {
+            localStorage.setItem('cricpro_last_pid', (parseInt(m[1]) || 0).toString());
+        }
         // Sync to MongoDB
         syncToDB('player', player);
         return player;
     },
     generatePlayerId(arr) {
-        if (arr.length === 0) return 'CP0001';
-        const nums = arr.map(p => {
-            const match = (p.playerId || '').match(/CP-?(\d+)/);
-            return match ? parseInt(match[1]) || 0 : 0;
-        });
-        const max = Math.max(...nums);
+        const lastPid = parseInt(localStorage.getItem('cricpro_last_pid')) || 0;
+        let max = lastPid;
+
+        if (arr && arr.length > 0) {
+            const nums = arr.map(p => {
+                const match = (p.playerId || '').match(/CP-?(\d+)/);
+                return match ? parseInt(match[1]) || 0 : 0;
+            });
+            max = Math.max(max, ...nums);
+        }
+        
         return 'CP' + String(max + 1).padStart(4, '0');
     },
     getPlayerById(id) {
